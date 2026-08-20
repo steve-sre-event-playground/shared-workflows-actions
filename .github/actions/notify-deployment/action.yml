@@ -1,0 +1,59 @@
+name: 'Notify Deployment'
+description: >
+  Emits an "I've just deployed to an environment" event by triggering the
+  deployment-event workflow_dispatch in steve-event-handler. Intended to be
+  called by project pipelines (e.g. example-project-1) right after a deploy
+  step completes.
+
+inputs:
+  application:
+    description: Name of the application/repo that was deployed
+    required: true
+  environment:
+    description: Environment the application was deployed to (dev/staging/production)
+    required: true
+  version:
+    description: Version/tag of the deployed application
+    required: true
+  commit-sha:
+    description: Commit SHA that was deployed
+    required: true
+  deployed-by:
+    description: Actor who triggered the deployment
+    required: false
+    default: ${{ github.actor }}
+  event-handler-repo:
+    description: owner/repo of the event handler to dispatch to
+    required: false
+    default: steve-sre-event-playground/steve-event-handler
+  event-handler-workflow:
+    description: Workflow filename (in event-handler-repo) to dispatch
+    required: false
+    default: deployment-event.yml
+  token:
+    description: >
+      Credential used to authenticate the cross-repo workflow_dispatch call
+      (SRE_EVENTMANAGER_CLIENT_SECRET). Must have permission to trigger
+      Actions workflows in event-handler-repo.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Trigger "deployment" event on event handler
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+      run: |
+        set -euo pipefail
+        echo "Dispatching deployment event for ${{ inputs.application }} (${{ inputs.environment }}) to ${{ inputs.event-handler-repo }}"
+
+        gh workflow run "${{ inputs.event-handler-workflow }}" \
+          --repo "${{ inputs.event-handler-repo }}" \
+          --field application="${{ inputs.application }}" \
+          --field environment="${{ inputs.environment }}" \
+          --field version="${{ inputs.version }}" \
+          --field commit_sha="${{ inputs.commit-sha }}" \
+          --field deployed_by="${{ inputs.deployed-by }}"
+
+        echo "Deployment event dispatched."
