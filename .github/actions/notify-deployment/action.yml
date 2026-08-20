@@ -76,6 +76,7 @@ runs:
 
         gh workflow run "${{ inputs.event-handler-workflow }}" \
           --repo "${{ inputs.event-handler-repo }}" \
+          --ref main \
           --field application="${{ inputs.application }}" \
           --field environment="${{ inputs.environment }}" \
           --field version="${{ inputs.version }}" \
