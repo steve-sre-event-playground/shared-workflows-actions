@@ -5,6 +5,16 @@ description: >
   called by project pipelines (e.g. example-project-1) right after a deploy
   step completes.
 
+  Authenticates using a short-lived installation token for the
+  "example-eventmanager" GitHub App (minted from app-id/private-key), NOT a
+  personal access token or the app's OAuth client secret - a client secret
+  can only be used in interactive OAuth flows, it cannot call the Actions
+  API. Triggering (rather than calling) deployment-event.yml as a plain
+  workflow_dispatch also means steve-event-handler's run executes fully in
+  its own repository context, so any secrets it needs stay private to it -
+  unlike a `workflow_call` reusable workflow, which never has access to its
+  own repo's secrets unless the caller explicitly forwards them.
+
 inputs:
   application:
     description: Name of the application/repo that was deployed
@@ -30,20 +40,36 @@ inputs:
     description: Workflow filename (in event-handler-repo) to dispatch
     required: false
     default: deployment-event.yml
-  token:
-    description: >
-      Credential used to authenticate the cross-repo workflow_dispatch call
-      (SRE_EVENTMANAGER_CLIENT_SECRET). Must have permission to trigger
-      Actions workflows in event-handler-repo.
+  app-id:
+    description: App ID of the GitHub App used to authenticate the cross-repo dispatch (SRE_EVENTMANAGER_APP_ID)
+    required: true
+  app-private-key:
+    description: Private key (PEM) of the GitHub App used to authenticate the cross-repo dispatch (SRE_EVENTMANAGER_PRIVATE_KEY)
     required: true
 
 runs:
   using: composite
   steps:
+    - name: Determine target repo name
+      id: target
+      shell: bash
+      run: echo "repo-name=${GHR##*/}" >> "$GITHUB_OUTPUT"
+      env:
+        GHR: ${{ inputs.event-handler-repo }}
+
+    - name: Generate installation token for example-eventmanager app
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: steve-sre-event-playground
+        repositories: ${{ steps.target.outputs.repo-name }}
+
     - name: Trigger "deployment" event on event handler
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.token }}
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         set -euo pipefail
         echo "Dispatching deployment event for ${{ inputs.application }} (${{ inputs.environment }}) to ${{ inputs.event-handler-repo }}"

@@ -21,10 +21,20 @@ Usage from a calling project's workflow:
     environment: staging
     version: 1.0.42
     commit-sha: ${{ github.sha }}
-    token: ${{ secrets.SRE_EVENTMANAGER_CLIENT_SECRET }}
+    app-id: ${{ secrets.SRE_EVENTMANAGER_APP_ID }}
+    app-private-key: ${{ secrets.SRE_EVENTMANAGER_PRIVATE_KEY }}
 ```
 
-The `token` must have permission to trigger Actions workflows in the
-`steve-event-handler` repository (this is provided org-wide today via the
-`SRE_EVENTMANAGER_CLIENT_SECRET` repo secret).
+The action mints a short-lived installation token for the
+`example-eventmanager` GitHub App (from `app-id`/`app-private-key`) and uses
+it to call `gh workflow run` against `steve-event-handler`. A plain OAuth
+client secret cannot be used for this - it only supports interactive user
+login flows, not calling the Actions API. Triggering `deployment-event.yml`
+as a `workflow_dispatch` (rather than a `workflow_call` reusable workflow)
+also means that run executes fully inside `steve-event-handler`'s own
+repository context, so any secrets it needs stay private to it.
+
+Requires the `SRE_EVENTMANAGER_APP_ID` and `SRE_EVENTMANAGER_PRIVATE_KEY`
+repo secrets on the calling repo, scoped to the `example-eventmanager` app
+installation which has `actions: write` permission on `steve-event-handler`.
 
