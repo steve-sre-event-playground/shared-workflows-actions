@@ -79,11 +79,16 @@ runs:
         repositories: ${{ steps.target.outputs.repo-name }}
 
     - name: Trigger "deployment" event on event handler
+      id: dispatch
       shell: bash
       env:
         GH_TOKEN: ${{ steps.app-token.outputs.token }}
       run: |
         set -euo pipefail
+        CORRELATION_ID="corr-$(date +%s)-${RANDOM}"
+        SOURCE_RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        echo "correlation-id=${CORRELATION_ID}" >> "$GITHUB_OUTPUT"
+
         echo "Dispatching deployment event for ${{ inputs.application }} (${{ inputs.environment }}) to ${{ inputs.event-handler-repo }}"
 
         gh workflow run "${{ inputs.event-handler-workflow }}" \
@@ -96,6 +101,38 @@ runs:
           --field deployed_by="${{ inputs.deployed-by }}" \
           --field artifact_name="${{ inputs.artifact-name }}" \
           --field artifact_digest="${{ inputs.artifact-digest }}" \
-          --field source_repo="${{ inputs.source-repo }}"
+          --field source_repo="${{ inputs.source-repo }}" \
+          --field correlation_id="${CORRELATION_ID}" \
+          --field source_run_url="${SOURCE_RUN_URL}"
 
         echo "Deployment event dispatched."
+
+    - name: Link to downstream run in job summary
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+      run: |
+        set -euo pipefail
+        CORR="${{ steps.dispatch.outputs.correlation-id }}"
+        RUN_URL=""
+        RUN_TITLE=""
+
+        for i in $(seq 1 15); do
+          sleep 2
+          MATCH=$(gh api "repos/${{ inputs.event-handler-repo }}/actions/runs?per_page=10" \
+            --jq ".workflow_runs[] | select(.display_title | contains(\"${CORR}\")) | \"\(.html_url)|\(.display_title)\"" | head -n1) || true
+          if [ -n "${MATCH}" ]; then
+            RUN_URL="${MATCH%%|*}"
+            RUN_TITLE="${MATCH#*|}"
+            break
+          fi
+        done
+
+        {
+          echo "### 🔗 Downstream workflow"
+          if [ -n "${RUN_URL}" ]; then
+            echo "▶️ Triggered [\`${{ inputs.event-handler-workflow }}\`](${RUN_URL}) (\"${RUN_TITLE}\") in \`${{ inputs.event-handler-repo }}\`"
+          else
+            echo "▶️ Triggered \`${{ inputs.event-handler-workflow }}\` in \`${{ inputs.event-handler-repo }}\` (run not found within poll window - check the repo's Actions tab)"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
