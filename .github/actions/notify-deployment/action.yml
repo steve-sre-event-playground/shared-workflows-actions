@@ -32,6 +32,18 @@ inputs:
     description: Actor who triggered the deployment
     required: false
     default: ${{ github.actor }}
+  artifact-name:
+    description: Name of the built artifact a build-provenance attestation was generated for
+    required: false
+    default: ''
+  artifact-digest:
+    description: sha256:<digest> of the built artifact a build-provenance attestation was generated for
+    required: false
+    default: ''
+  source-repo:
+    description: owner/repo of the project that was deployed
+    required: false
+    default: ${{ github.repository }}
   event-handler-repo:
     description: owner/repo of the event handler to dispatch to
     required: false
@@ -81,6 +93,9 @@ runs:
           --field environment="${{ inputs.environment }}" \
           --field version="${{ inputs.version }}" \
           --field commit_sha="${{ inputs.commit-sha }}" \
-          --field deployed_by="${{ inputs.deployed-by }}"
+          --field deployed_by="${{ inputs.deployed-by }}" \
+          --field artifact_name="${{ inputs.artifact-name }}" \
+          --field artifact_digest="${{ inputs.artifact-digest }}" \
+          --field source_repo="${{ inputs.source-repo }}"
 
         echo "Deployment event dispatched."
